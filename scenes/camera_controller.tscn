@@ -1,0 +1,13 @@
+[gd_scene load_steps=2 format=3 uid="uid://cjvqs4rirwkd4"]
+
+[ext_resource type="Script" uid="uid://yiqje2mdmfwi" path="res://addons/gdsquad/camera_controller.gd" id="1_nsieu"]
+
+[node name="CameraController" type="Node3D"]
+script = ExtResource("1_nsieu")
+min_orbit_angle = -180.0
+max_orbit_angle = 180.0
+min_declination_angle = -0.785398
+max_declination_angle = 0.0
+
+[node name="camera" type="Camera3D" parent="."]
+fov = 60.0
