@@ -90,12 +90,14 @@ class Parser:
 	func parse_file(file: ModSet.FilePath, decode_hashes: bool = true) -> Dictionary:
 		return parse(file.read_bytes())
 
-	func _parse_list(reader: ChunkReader, header: ChunkReader.ChunkHeader, parse_fn: Callable) -> Dictionary[String, Dictionary]:
-		var folder_reader := reader.read_folder(header)
-		var result: Dictionary[String, Dictionary] = {}
+	func _parse_list(reader: ChunkReader, header: ChunkReader.ChunkHeader, parse_fn: Callable) -> Array[Dictionary]:
+		var folder_reader := reader.read_chunk(header)
+		var result: Array[Dictionary] = []
 		var current_chunk := folder_reader.read_header()
 		while current_chunk != null:
-			result[current_chunk.name] = parse_fn.call(folder_reader, current_chunk)
+			var item: Dictionary = {"name": current_chunk.name}
+			item.merge(parse_fn.call(folder_reader, current_chunk))
+			result.append(item)
 			current_chunk = folder_reader.read_header()
 		return result
 
@@ -185,11 +187,15 @@ class Parser:
 		var ignore_transitions := bool(reader.read_u8())
 		var has_modifier := bool(reader.read_u8())
 		var modifier := reader.read_str() if has_modifier else null
-		return {
-			"animations": animations,
-			"random_motions": random_motions,
-			"randomize_each_loop": randomize_each_loop,
-			"events": events,
+		var result: Dictionary[String, Variant] = {}
+		if len(animations):
+			result["animations"] = animations
+		if len(random_motions):
+			result["random_motions"] = random_motions
+		result["randomize_each_loop"] = randomize_each_loop
+		if len(events):
+			result["events"] = events
+		result.merge({
 			"type": type,
 			"start_delay": start_delay,
 			"loop_delay": loop_delay,
@@ -199,10 +205,11 @@ class Parser:
 			"ignore_exit_delay": ignore_exit_delay,
 			"ignore_transitions": ignore_transitions,
 			"modifier": modifier,
-		}
+		})
+		return result
 
-	func _parse_actions(reader: ChunkReader) -> Dictionary[String, Variant]:
-		var result: Dictionary[String, Variant] = {}
+	func _parse_actions(reader: ChunkReader) -> Array[Dictionary]:
+		var result: Array[Dictionary] = []
 		var num_actions := reader.read_u32()
 		for i in num_actions:
 			var action_name := reader.read_str()
@@ -228,10 +235,12 @@ class Parser:
 					"compare_type": ActionCompareType.find_key(compare_type),
 					"condition": condition_name,
 				})
-			result[action_name] = {
-				"motions": motions,
-				"subactions": subactions,
-			}
+			var item: Dictionary = {"name": action_name}
+			if len(motions):
+				item["motions"] = motions
+			if len(subactions):
+				item["subactions"] = subactions
+			result.append(item)
 		return result
 
 	func _parse_selected_ui(reader: ChunkReader) -> Dictionary[String, Variant]:
@@ -280,14 +289,15 @@ class Writer:
 		for anim_name in xrefed_animations:
 			var xref_data = xrefed_animations[anim_name]
 			if xref_data is not Dictionary:
+				errors.append('Xrefed animation "%s": not a table' % [anim_name])
 				continue
 			var source_path := str(xref_data.get("source_path", ""))
 			if source_path == "":
-				errors.append('xrefed animation "%s" has emply source_path' % [anim_name])
+				errors.append('Xrefed animation "%s": emply source_path' % [anim_name])
 				continue
 			var source_name := str(xref_data.get("source_name", ""))
 			if source_name == "":
-				errors.append('xrefed animation "%s" has emply source_name' % [anim_name])
+				errors.append('Xrefed animation "%s": emply source_name' % [anim_name])
 				continue
 			writer.start_chunk("FOLDANIM", 3, anim_name)
 			writer.start_chunk("DATAXREF", 1)
@@ -306,13 +316,16 @@ class Writer:
 			return res
 
 		writer.start_chunk("FOLDEVCT", 1)
-		var events = data.get("events", {})
 		var exported_events: Dictionary[String, bool] = {}
-		if events is Dictionary:
-			for event_name in events:
-				var event = events[event_name]
+		var events = data.get("events", [])
+		if events is Array:
+			for event in events:
 				if event is not Dictionary:
-					errors.append('Event "%s": not a table' % [event_name])
+					errors.append("Event: not a table")
+					continue
+				var event_name := str(event.get("name", ""))
+				if event_name == "":
+					errors.append("Event: missing a name")
 					continue
 				var properties = get_array.call(event, "properties")
 				if properties is not Array:
@@ -332,12 +345,15 @@ class Writer:
 
 		writer.start_chunk("FOLDCLST", 1)
 		var exported_clauses: Dictionary[String, bool] = {}
-		var clauses = data.get("clauses", {})
-		if clauses is Dictionary:
-			for clause_name in clauses:
-				var clause = clauses[clause_name]
+		var clauses = data.get("clauses", [])
+		if clauses is Array:
+			for clause in clauses:
 				if clause is not Dictionary:
-					errors.append('Clause "%s": not a table' % [clause_name])
+					errors.append("Clause: not a table")
+					continue
+				var clause_name := str(clause.get("name", ""))
+				if clause_name == "":
+					errors.append("Clause: missing a name")
 					continue
 				var clause_type_str := str(clause.get("type", ""))
 				var clause_type = ClauseType.get(clause_type_str.to_upper(), -1)
@@ -369,12 +385,15 @@ class Writer:
 
 		writer.start_chunk("FOLDCONL", 1)
 		var exported_conditions: Dictionary[String, bool] = {}
-		var conditions = data.get("conditions", {})
-		if conditions is Dictionary:
-			for condition_name in conditions:
-				var condition = conditions[condition_name]
+		var conditions = data.get("conditions", [])
+		if conditions is Array:
+			for condition in conditions:
 				if condition is not Dictionary:
-					errors.append('Condition "%s": not a table' % [condition_name])
+					errors.append("Condition: not a table")
+					continue
+				var condition_name := str(condition.get("name", ""))
+				if condition_name == "":
+					errors.append("Condition: missing a name")
 					continue
 				var condition_clauses = get_array.call(condition, "clauses")
 				if condition_clauses is not Array:
@@ -392,13 +411,16 @@ class Writer:
 		writer.end_chunk("FOLDCONL")
 
 		writer.start_chunk("FOLDMODL", 1)
-		var modifiers = data.get("modifiers", {})
+		var modifiers = data.get("modifiers", [])
 		var exported_modifiers: Dictionary[String, bool] = {}
-		if modifiers is Dictionary:
-			for modifier_name in modifiers:
-				var modifier = modifiers[modifier_name]
+		if modifiers is Array:
+			for modifier in modifiers:
 				if modifier is not Dictionary:
-					errors.append('Modifier "%s": not a table' % [modifier_name])
+					errors.append("Modifier: not a table")
+					continue
+				var modifier_name := str(modifier.get("name", ""))
+				if modifier_name == "":
+					errors.append("Modifier: missing a name")
 					continue
 				var modifier_type_str := str(modifier.get("type", "")	)
 				var modifier_type = ModifierType.get(modifier_type_str.to_upper(), -1)
@@ -415,14 +437,17 @@ class Writer:
 		writer.end_chunk("FOLDMODL")
 
 		writer.start_chunk("FOLDMTRE", 3)
-		var motions = data.get("motions", {})
+		var motions = data.get("motions", [])
 		var exported_motions: Dictionary[String, Dictionary] = {}
-		if motions is Dictionary:
+		if motions is Array:
 			var motion_graph: Dictionary[String, PackedStringArray] = {}
-			for motion_name in motions:
-				var motion = motions[motion_name]
+			for motion in motions:
 				if motion is not Dictionary:
-					errors.append('Motion "%s": not a table' % [motion_name])
+					errors.append("Motion: not a table")
+					continue
+				var motion_name := str(motion.get("name", ""))
+				if motion_name == "":
+					errors.append("Motion: missing a name")
 					continue
 				var motion_type_str := str(motion.get("type", ""))
 				var motion_type = MotionType.get(motion_type_str.to_upper(), -1)
@@ -526,16 +551,19 @@ class Writer:
 					writer.write_u8(0)
 				writer.end_chunk("DATAMTON")
 		writer.end_chunk("FOLDMTRE")
-#
+
 		writer.start_chunk("DATAACTS", 1)
-		var actions = data.get("actions", {})
-		if actions is Dictionary:
+		var actions = data.get("actions", [])
+		if actions is Array:
 			var action_graph: Dictionary[String, PackedStringArray] = {}
 			var exported_actions: Dictionary[String, Dictionary] = {}
-			for action_name in actions:
-				var action = actions[action_name]
+			for action in actions:
 				if action is not Dictionary:
-					errors.append('Action "%s": not a table' % [action_name])
+					errors.append("Action: not a table")
+					continue
+				var action_name := str(action.get("name", ""))
+				if action_name == "":
+					errors.append("Action: missing a name")
 					continue
 				var item := {"name": action_name, "motions": [], "subactions": []}
 				var action_motions = get_array.call(action, "motions")
@@ -594,7 +622,7 @@ class Writer:
 					item["subactions"].append(subaction_data)
 				exported_actions[action_name] = item
 			writer.write_u32(len(exported_actions))
-			for action_name in GsqGraphUtils.toporder(action_graph):
+			for action_name in exported_actions:
 				var exported_action := exported_actions[action_name]
 				writer.write_str(str(exported_action["name"]))
 				writer.write_u32(len(exported_action["motions"]))
@@ -610,7 +638,7 @@ class Writer:
 					if subaction["compare_type"] == ActionCompareType.IF or subaction["compare_type"] == ActionCompareType.ELSE_IF:
 						writer.write_str(subaction["condition_name"])
 		writer.end_chunk("DATAACTS")
-#
+
 		writer.start_chunk("DATASEUI", 3)
 		var selected_ui = data.get("selected_ui", {})
 		if selected_ui is not Dictionary:

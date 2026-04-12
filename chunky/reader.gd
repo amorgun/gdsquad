@@ -1,6 +1,7 @@
 class_name ChunkReader
 
 var stream: StreamPeerBuffer
+var _warn_not_enough_bytes := 0
 
 class ChunkHeader:
 	var typeid: String
@@ -38,7 +39,7 @@ func read_header(expected_typeid: String = "") -> ChunkHeader:
 	return res
 
 func skip(size: int) -> void:
-	stream.seek(stream.get_position() + size)
+	stream.seek(stream.get_position() + get_available_size(size))
 
 func skip_chunky() -> void:
 	skip(CHUNKY_HEADER_SIZE)
@@ -46,33 +47,56 @@ func skip_chunky() -> void:
 func has_data() -> bool:
 	return stream.get_position() < stream.get_size()
 
+func get_available_size(required: int) -> int:
+	return mini(required, stream.get_size() - stream.get_position())
+
 func read_str() -> String:
 	# TODO don't read past the end of the chunks
-	var l := stream.get_u32()
+	var l := read_u32()
 	if not l:
 		return ""
-	return stream.get_data(l)[1].get_string_from_utf8()
+	return read_data(l).get_string_from_utf8()
 
 func read_str_utf16() -> String:
-	var l := stream.get_u32()
+	var l := read_u32()
 	if not l:
 		return ""
-	return stream.get_data(2 * l)[1].get_string_from_utf16()
+	return read_data(2 * l).get_string_from_utf16()
 
-func read_8() -> int: return stream.get_8()
-func read_u8() -> int: return stream.get_u8()
-func read_16() -> int: return stream.get_16()
-func read_u16() -> int: return stream.get_u16()
-func read_32() -> int: return stream.get_32()
-func read_u32() -> int: return stream.get_u32()
-func read_float() -> float: return stream.get_float()
+func _read_or_default(size: int, default: Variant, getter: Callable) -> Variant:
+	var available := get_available_size(size)
+	if available < size:
+		if _warn_not_enough_bytes == 0:
+			GsqLogger.error("Not enough bytes: has %s, need %s" % [available, size])
+		skip(available)
+		return default
+	return getter.call()
+
+func read_8() -> int: return _read_or_default(1, 0, stream.get_8)
+func read_u8() -> int: return _read_or_default(1, 0, stream.get_u8)
+func read_16() -> int: return _read_or_default(2, 0, stream.get_16)
+func read_u16() -> int: return _read_or_default(2, 0, stream.get_u16)
+func read_32() -> int: return _read_or_default(4, 0, stream.get_32)
+func read_u32() -> int: return _read_or_default(4, 0, stream.get_u32)
+func read_float() -> float: return _read_or_default(4, 0., stream.get_float)
 func read_vec2() -> Vector2: return Vector2(read_float(), read_float())
 func read_vec3() -> Vector3: return Vector3(read_float(), read_float(), read_float())
-func read_data(size: int) -> PackedByteArray: return stream.get_data(size)[1]
+func read_data(size: int) -> PackedByteArray: return stream.get_data(get_available_size(size))[1]
 
-func read_folder(header: ChunkHeader) -> ChunkReader:
+func read_chunk(header: ChunkHeader) -> ChunkReader:
 	var data := read_data(header.size)
 	return ChunkReader.from_bytes(data)
+
+func do_until_eof(size: int, name: String, fn: Callable, chunk_size: int = 16):
+	_warn_not_enough_bytes += 1
+	for chunk_idx in (size + chunk_size - 1) / chunk_size:
+		for i in mini(chunk_size, size - chunk_idx * chunk_size):
+			fn.call()
+		if not has_data():
+			GsqLogger.error("Not enough bytes available to parse array %s" % [name])
+			_warn_not_enough_bytes -= 1
+			return
+	_warn_not_enough_bytes -= 1
 
 static func is_chunky(data: PackedByteArray) -> bool:
 	if len(data) < CHUNKY_HEADER_SIZE + 8:

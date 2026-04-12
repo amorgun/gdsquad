@@ -1,10 +1,12 @@
 class_name ModResourceLoader
 
 var mod: ModSet
+static var color_regex := RegEx.new()
 
 static func create(mod: ModSet) -> ModResourceLoader:
 	var res := ModResourceLoader.new()
 	res.mod = mod
+	color_regex.compile(r"#[\da-f]{6}")
 	return res
 
 func fload_bytes(file: ModSet.FilePath) -> PackedByteArray:
@@ -19,7 +21,7 @@ func fload_lua(file: ModSet.FilePath) -> Lua:
 		return lua
 	var err := lua.dostring(file.read_bytes().get_string_from_utf8())
 	if err != Error.OK:
-		GsqLogger.error('Cannot parse lua file "%s": %s', [mod.mod_path, lua.get_error()])
+		GsqLogger.error('Cannot parse lua file "%s": %s', [mod.main_mod.config_path, lua.get_error()])
 	return lua
 
 func fload_image(file: ModSet.FilePath) -> Image:
@@ -47,3 +49,10 @@ func pload_lua(path: String) -> Lua:
 
 func pload_image(path: String) -> Image:
 	return fload_image(mod.locate_file(ModSet.ModPath.from_path(path)))
+
+func pload_svg(path: String, color: Color) -> Image:
+	var text := pload_text(path)
+	text = color_regex.sub(text, "#" + color.to_html(false))
+	var image := Image.new()
+	image.load_svg_from_string(text)
+	return image

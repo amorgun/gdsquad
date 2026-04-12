@@ -11,6 +11,7 @@ var current_level := LogLevel.DEBUG
 signal message_added(text: String, level: LogLevel)
 
 func log(level: LogLevel, fmt: String, args: Array = []) -> void:
+	printerr(fmt % args)
 	if current_level <= level:
 		message_added.emit(fmt % args, level)
 

@@ -69,6 +69,24 @@ class Folder:
 
 var root: Folder
 
+static var _loaded_cache: Dictionary[String, SgaArchive] = {}
+static var _loaded_cache_mutex := Mutex.new()
+
+static func load(file_path: String) -> SgaArchive:
+	if file_path in _loaded_cache:
+		return _loaded_cache[file_path]
+	_loaded_cache_mutex.lock()
+	var result: SgaArchive = null
+	if file_path in _loaded_cache:
+		result = _loaded_cache[file_path]
+	else:
+		result = SgaArchive.new()
+		if not result.load_meta(file_path):
+			result = null
+		_loaded_cache[file_path] = result
+	_loaded_cache_mutex.unlock()
+	return result
+
 func load_meta(file_path: String) -> bool:
 	var file := FileAccess.open(file_path, FileAccess.READ)
 	if not file:
@@ -82,7 +100,7 @@ func load_meta(file_path: String) -> bool:
 		return false
 	var version_major := file.get_16()
 	var version_minor := file.get_16()
-	var version := (version_major << 16) | version_minor#
+	var version := (version_major << 16) | version_minor
 	if not (
 		version == SgaVersion.V2_0
 		or version == SgaVersion.V5_0

@@ -35,4 +35,4 @@ func get_value(section: String, key: String, default: Variant = null) -> Variant
 	var data = sections.get(section)
 	if data == null:
 		return default
-	return data.get(key, default)
+	return data.get(key.to_lower(), default)

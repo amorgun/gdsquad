@@ -240,11 +240,11 @@ func load(
 	if err != Error.OK: return err
 	var available_modules: Dictionary[String, String] = {}
 	var modules_dirs: PackedStringArray = [path.get_base_dir()]
-	modules_dirs.append_array(extra_lookup_folders)
+	for p in extra_lookup_folders:
+		modules_dirs.append(Settings.expand_path(p))
 	for modules_dir_path in modules_dirs:
 		var modules_dir := DirAccess.open(modules_dir_path)
 		if modules_dir == null:
-			print("No FOLDER %s" % modules_dir_path)
 			continue
 		for module_path in modules_dir.get_files():
 			if module_path.get_extension().to_lower() != "module":
@@ -283,8 +283,7 @@ func load_archive_meta(source: Source) -> void:
 	if not source.packed:
 		return
 	if source.effective_path not in _arcive_cache:
-		var archive := SgaArchive.new()
-		archive.load_meta(source.effective_path)
+		var archive := SgaArchive.load(source.effective_path)
 		_arcive_cache[source.effective_path] = archive
 
 func find_packed_folder(sga_path: String, path: String) -> SgaArchive.Folder:

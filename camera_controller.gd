@@ -39,6 +39,7 @@ var current_pan_speed := Vector3.ZERO
 var current_zoom_speed := 0.
 var current_orbit_speed := 0.
 var current_declination_speed := 0.
+var _saved_state: Dictionary = {}
 
 const pan_actions: Dictionary[String, Vector3] = {
 	"camera_forward": Vector3.FORWARD,
@@ -75,12 +76,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		is_rotating = true
 	if event.is_action_released("camera_toggle_rotation"):
 		stop_rotating()
+
+	if event.is_action_pressed("camera_reset"):
+		restore_state()
+
 	
-func _input(event: InputEvent) -> void:
-	if not process_input:
-		return
-	if event is InputEventMouseMotion:
-		update_rotation_direction(event)
+#func _input(event: InputEvent) -> void:
+	#if not process_input:
+		#return
+	#if event is InputEventMouseMotion:
+		#update_rotation_direction(event)
 
 func pan_update(delta: float) -> void:
 	if current_pan_speed.is_zero_approx():
@@ -109,12 +114,12 @@ func zoom_update(delta: float) -> void:
 func angle_update(delta: float) -> void:
 	if not is_rotating:
 		return
-	
-	rotation.y = clampf(rotation.y - current_orbit_speed * delta, min_orbit_angle, max_orbit_angle)
+
+	rotation.y = rotation.y - current_orbit_speed * delta
 	current_orbit_speed = lerpf(current_orbit_speed, 0., delta * orbit_speed_damp_rate)
 	if abs(current_orbit_speed) < orbit_speed_clip:
 		current_orbit_speed = 0
-	
+
 	rotation.x = clampf(rotation.x - current_declination_speed * delta, min_declination_angle, max_declination_angle)
 	current_declination_speed = lerpf(current_declination_speed, 0., delta * orbit_speed_damp_rate)
 	if abs(current_declination_speed) < declination_speed_clip:
@@ -130,4 +135,36 @@ func update_rotation_direction(event: InputEventMouseMotion) -> void:
 	var distance := event.screen_relative
 	current_orbit_speed = signf(distance.x) * orbit_speed
 	current_declination_speed = signf(distance.y) * declination_speed
-	
+
+func frame(aabb: AABB) -> void:
+	position.y = aabb.get_center().y
+	zoom_distance = maxf(aabb.size.z * 1.4, aabb.size.y / 2. / tan(deg_to_rad(camera.fov / 2)) * 1.2)  # TODO implement horizontal fov
+
+func _on_root_mouse_move(event: InputEventMouseMotion) -> void:
+	if not process_input:
+		return
+	update_rotation_direction(event)
+
+func save_state() -> void:
+	_saved_state = get_state()
+
+func restore_state() -> void:
+	set_state(_saved_state)
+
+func get_state() -> Dictionary:
+	return {
+		"position": position,
+		"rotation": rotation,
+		"zoom_distance": zoom_distance,
+	}
+
+func set_state(state: Dictionary) -> void:
+	if not len(state):
+		return
+	position = state["position"]
+	rotation = state["rotation"]
+	zoom_distance = state["zoom_distance"]
+
+func setup_from_lua(config: Lua) -> void:
+	min_zoom_distance = config.get_value("DistMin", min_zoom_distance)
+	max_zoom_distance = config.get_value("DistMax", max_zoom_distance)

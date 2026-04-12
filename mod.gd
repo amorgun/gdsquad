@@ -58,10 +58,13 @@ func load(path: String, lang: String = 'english') -> Error:
 	description = config.get_value(SECTION_GLOBAL, "description")
 	folder = config.get_value(SECTION_GLOBAL, "modfolder")
 	version = config.get_value(SECTION_GLOBAL, "modversion")
-	if not DirAccess.dir_exists_absolute(path.get_base_dir().path_join(folder)):
-		GsqLogger.error('Cannot find folder %s', [folder])
-		return Error.ERR_FILE_NOT_FOUND
-	require_engine = bool(config.get_value(SECTION_GLOBAL, "RequireEngine", true))
+	#if not DirAccess.dir_exists_absolute(path.get_base_dir().path_join(folder)):
+		#GsqLogger.error('Cannot find folder %s', [folder])
+		#return Error.ERR_FILE_NOT_FOUND
+	require_engine = config.get_value(SECTION_GLOBAL, "RequireEngine", '0') != '0'
+	#require_engine = config.get_value(SECTION_GLOBAL, "RequireEngine", true)
+	#print("require_engine %s %s: %s %s %s" % [ui_name, path, require_engine, config.get_value(SECTION_GLOBAL, "RequireEngine", -1), config.sections])
+	#require_engine = bool(config.get_value(SECTION_GLOBAL, "RequireEngine", true))
 	for section_name in config.sections:
 		var section_root_folder := "data"
 		if section_name != SECTION_GLOBAL:
